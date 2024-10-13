@@ -1,0 +1,7 @@
+forge-std/=lib/forge-std/src/
+@openzeppelin/=lib/@openzeppelin/
+contracts/Terraforms.sol/=src/Terraforms.sol/
+contracts/TerraformsDreaming.sol/=src/TerraformsDreaming.sol/
+contracts/ITerraformsData.sol/=src/ITerraformsData.sol/
+contracts/TerraformsPlacements.sol/=src/TerraformsPlacements.sol/
+contracts/TerraformsAdmin.sol/=src/TerraformsAdmin.sol/
