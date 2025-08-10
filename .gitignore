@@ -1,14 +1,18 @@
+# Dotenv file
+.env
+
 # Compiler files
 cache/
 out/
+
+# Foundry dependency cache
+.deps/
 
 # Ignores development broadcast logs
 !/broadcast
 /broadcast/*/31337/
 /broadcast/**/dry-run/
 
-# Docs
-docs/
-
-# Dotenv file
-.env
+# output from script/tf_getparcel.sh
+*.html
+script/*.html

@@ -1,0 +1,51 @@
+{
+    "name": "Level 13 at {9, 5}",
+    "description": "Terraforms by Mathcastles. Onchain land art from a dynamically generated, onchain 3D world.",
+    "animation_url": "https://tokens.mathcastles.xyz/terraforms/token-html/1",
+    "aspect_ratio": 0.6929,
+    "version": "Version 2.0",
+    "attributes":
+    [
+        {
+            "trait_type": "Version",
+            "value": "2.0"
+        },
+        {
+            "trait_type": "Level",
+            "value": 13
+        },
+        {
+            "trait_type": "X Coordinate",
+            "value": "9"
+        },
+        {
+            "trait_type": "Y Coordinate",
+            "value": "5"
+        },
+        {
+            "trait_type": "Mode",
+            "value": "Origin Daydream"
+        },
+        {
+            "trait_type": "Zone",
+            "value": "Hypermage"
+        },
+        {
+            "trait_type": "Biome",
+            "value": "32"
+        },
+        {
+            "trait_type": "Chroma",
+            "value": "Pulse"
+        },
+        {
+            "trait_type": "Antenna",
+            "value": "On"
+        },
+        {
+            "trait_type": "???",
+            "value": 52453
+        }
+    ],
+    "image": "base64-encoded-static-svg-here"
+}
