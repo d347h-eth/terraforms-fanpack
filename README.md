@@ -43,6 +43,7 @@ forge build
   - **reference.md**: full public/private API reference
 - **lib**: dependencies from OpenZeppelin and Forge standard libraries required for Terraforms compilation
 - **script**
+  - **perlin_noise_audit**: script & report with analysis of `PerlinNoise.sol` to verify that there's no hidden data in the noise
   - **tf_getparcel.sh**: handy script that can fetch a complete HTML for a parcel (current state or any variation)
 - **src**: smart contracts
   - **interfaces/**: contract interfaces
