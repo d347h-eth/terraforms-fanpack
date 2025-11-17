@@ -13,8 +13,8 @@
    - Some pieces pause rendering (“gaps”). Chromium only emits screencast frames on paints, so we toggle the root element’s `translateZ(...)` transform every ~20 ms via `setInterval`. This has no visual effect but guarantees continuous frame emission, preserving those intentional gaps.
 
 3. **Native screencast capture**
-   - Uses `Page.startScreencast` instead of repeated `page.screenshot` calls to avoid per-frame raster/PNG overhead. Frames arrive as base64 PNG/JPEG buffers with minimal latency.
-   - Buffers frames in memory; disk writes occur after capture so I/O never alters timing.
+   - Uses `Page.startScreencast` instead of repeated `page.screenshot` calls to avoid per-frame raster/PNG overhead. Frames arrive as base64 PNG/JPEG buffers with minimal latency, and PNG headers are verified before a frame is considered valid to avoid early frames at wrong dimensions.
+   - Supports two modes: **streaming** (default) writes frames to disk sequentially via an async queue so each buffer is released immediately after it hits disk; **buffered** (`--mode buffered`) stores every frame in memory and flushes once at the end for the fastest encode path when RAM is available.
    - Logs per-frame intervals (min/median/max) and overall elapsed time to diagnose jitter.
 
 4. **Temporal throttling**
@@ -32,7 +32,7 @@
 
 ```bash
 npm install
-npm run capture -- path/to/animation.html
+NODE_OPTIONS=--expose-gc npm run capture -- path/to/animation.html [--mode streaming|buffered]
 ```
 
 Outputs land under `tmp/capture_<timestamp>` (all frames + `capture.mp4`).
@@ -42,6 +42,7 @@ Outputs land under `tmp/capture_<timestamp>` (all frames + `capture.mp4`).
 - Adjust `CAPTURE_FRAMERATE`, `CAPTURE_DURATION_SECONDS`, and `VIEWPORT` at the top of `scripts/capture.js`.  
 - Switch `SCREENSHOT_EXTENSION` to `"jpg"` for smaller buffers.  
 - Remove or modify the CSS/JS injections if future HTML pieces already handle alignment or if the heartbeat is unnecessary.  
+- Use `--mode streaming` (default) for long runs to keep memory usage constant; `--mode buffered` trades memory for peak throughput.  
 - To downsample or change duration post-capture, tweak the ffmpeg spawn parameters (`scripts/capture.js::createVideo`).
 
 ### Limitations

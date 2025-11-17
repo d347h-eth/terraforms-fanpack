@@ -7,14 +7,51 @@ const puppeteer = require('puppeteer');
 const CAPTURE_FRAMERATE = 40;
 const CAPTURE_DURATION_SECONDS = 15;
 const FRAME_COUNT = CAPTURE_FRAMERATE * CAPTURE_DURATION_SECONDS;
-const STARTUP_DELAY_MS = 0;
+const STARTUP_DELAY_MS = 50;
 const NAVIGATION_TIMEOUT_MS = 20000;
 const VIEWPORT = { width: 1200, height: 1732 };
 const SCREENSHOT_EXTENSION = 'png';
+const MODE_STREAMING = 'streaming';
+const MODE_BUFFERED = 'buffered';
+const MAX_STREAM_PENDING_WRITES = 8;
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+let gcWarned = false;
 
-async function captureAndCreateMP4(htmlPath, runDir) {
+function maybeCollectGarbage() {
+  if (typeof global.gc === 'function') {
+    global.gc();
+  } else if (!gcWarned) {
+    console.warn('Garbage collection unavailable. Run node with --expose-gc to reclaim memory between phases.');
+    gcWarned = true;
+  }
+}
+
+function parseArgs(argv) {
+  const options = { mode: MODE_STREAMING };
+  const positional = [];
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg.startsWith('--mode=')) {
+      options.mode = arg.split('=')[1]?.toLowerCase() || MODE_BUFFERED;
+    } else if (arg === '--mode') {
+      options.mode = argv[i + 1]?.toLowerCase() || MODE_BUFFERED;
+      i += 1;
+    } else {
+      positional.push(arg);
+    }
+  }
+
+  if (options.mode !== MODE_BUFFERED && options.mode !== MODE_STREAMING) {
+    console.warn(`Unknown mode "${options.mode}", defaulting to "${MODE_STREAMING}".`);
+    options.mode = MODE_STREAMING;
+  }
+
+  return { htmlPath: positional[0], mode: options.mode };
+}
+
+async function captureAndCreateMP4(htmlPath, runDir, mode) {
   const browser = await puppeteer.launch({
     headless: true,
     args: [
@@ -57,19 +94,30 @@ async function captureAndCreateMP4(htmlPath, runDir) {
     console.log('Page loaded; starting capture…');
     await delay(STARTUP_DELAY_MS);
 
-    const { actualFps, frames } = await screencastCapture(page);
-    await persistFrames(runDir, frames);
-    return createVideo(runDir, actualFps);
+    const { actualFps, frames } = await screencastCapture(page, runDir, mode);
+    if (mode === MODE_BUFFERED && frames) {
+      await persistFrames(runDir, frames);
+    }
+    await page.close();
+    await browser.close();
+    page = null;
+    maybeCollectGarbage();
+    const mp4File = await createVideo(runDir, actualFps);
+    maybeCollectGarbage();
+    return mp4File;
   } finally {
     if (page) {
       try {
-        const client = await page.target().createCDPSession();
-        await client.detach();
+        await page.close();
       } catch {
-        // ignore errors if the session is already closed
+        // ignore errors if page already closed
       }
     }
-    await browser.close();
+    try {
+      await browser.close();
+    } catch {
+      // ignore errors on close
+    }
   }
 }
 
@@ -123,24 +171,28 @@ async function createVideo(runDir, actualFps) {
 }
 
 async function persistFrames(runDir, frameBuffers) {
-  await Promise.all(
-    frameBuffers.map((buffer, index) => {
-      const fileName = `frame_${index.toString().padStart(3, '0')}.${SCREENSHOT_EXTENSION}`;
-      const filePath = path.join(runDir, fileName);
-      return fs.promises.writeFile(filePath, buffer);
-    })
-  );
+  for (let i = 0; i < frameBuffers.length; i += 1) {
+    const fileName = `frame_${i.toString().padStart(3, '0')}.${SCREENSHOT_EXTENSION}`;
+    const filePath = path.join(runDir, fileName);
+    await fs.promises.writeFile(filePath, frameBuffers[i]);
+    frameBuffers[i] = null;
+  }
+  frameBuffers.length = 0;
 }
 
-async function screencastCapture(page) {
+async function screencastCapture(page, runDir, mode) {
   const client = await page.target().createCDPSession();
-  const frameBuffers = [];
+  const bufferFrames = mode !== MODE_STREAMING;
+  const frameBuffers = bufferFrames ? [] : null;
   let framesCaptured = 0;
+  let framesStored = 0;
   const frameDurations = [];
   const captureStart = Date.now();
   let lastFrameTimestamp = captureStart;
   const desiredFrameInterval = 1000 / CAPTURE_FRAMERATE;
-  let storedFrames = 0;
+  let writeQueue = Promise.resolve();
+  let pendingWrites = 0;
+  let skippedInvalidFrames = 0;
 
   await client.send('Emulation.setDeviceMetricsOverride', {
     width: VIEWPORT.width,
@@ -165,7 +217,7 @@ async function screencastCapture(page) {
     deviceScaleFactor: 1,
   });
 
-  const frameHandler = async ({ data, sessionId }) => {
+  const frameHandler = async ({ data, metadata, sessionId }) => {
     const now = Date.now();
     frameDurations.push(now - lastFrameTimestamp);
     lastFrameTimestamp = now;
@@ -173,9 +225,32 @@ async function screencastCapture(page) {
     const elapsed = now - captureStart;
     const expectedStoredFrames = Math.floor(elapsed / desiredFrameInterval);
 
-    if (storedFrames < FRAME_COUNT && expectedStoredFrames > storedFrames) {
-      frameBuffers.push(Buffer.from(data, 'base64'));
-      storedFrames += 1;
+    if (
+      framesStored < FRAME_COUNT &&
+      expectedStoredFrames > framesStored
+    ) {
+      const fileName = `frame_${framesStored.toString().padStart(3, '0')}.${SCREENSHOT_EXTENSION}`;
+      const buffer = Buffer.from(data, 'base64');
+      if (!frameMatchesViewport(buffer)) {
+        skippedInvalidFrames += 1;
+      } else if (bufferFrames) {
+        frameBuffers.push(buffer);
+        framesStored += 1;
+      } else {
+        const targetPath = path.join(runDir, fileName);
+        pendingWrites += 1;
+        writeQueue = writeQueue.then(async () => {
+          try {
+            await fs.promises.writeFile(targetPath, buffer);
+          } finally {
+            pendingWrites -= 1;
+          }
+        });
+        if (pendingWrites >= MAX_STREAM_PENDING_WRITES) {
+          await writeQueue;
+        }
+        framesStored += 1;
+      }
     }
 
     framesCaptured += 1;
@@ -184,28 +259,34 @@ async function screencastCapture(page) {
 
   client.on('Page.screencastFrame', frameHandler);
 
-  while (storedFrames < FRAME_COUNT) {
+  while (framesStored < FRAME_COUNT) {
     await delay(5);
   }
 
   await client.send('Page.stopScreencast');
   client.off('Page.screencastFrame', frameHandler);
+  if (!bufferFrames) {
+    await writeQueue;
+    writeQueue = null;
+  }
 
   const captureEnd = Date.now();
   const elapsedMs = captureEnd - captureStart;
-  const actualFps = storedFrames / (elapsedMs / 1000);
+  const actualFps = framesStored / (elapsedMs / 1000);
 
   frameDurations.sort((a, b) => a - b);
   const median = frameDurations[Math.floor(frameDurations.length / 2)] || 0;
   const max = Math.max(...frameDurations, 0);
   const min = Math.min(...frameDurations, 0);
   console.log(
-    `Screencast captured ${framesCaptured} frames in ${(elapsedMs / 1000).toFixed(2)}s (~${actualFps.toFixed(
+    `Screencast stored ${framesStored} frames (received ${framesCaptured}, skipped ${skippedInvalidFrames}) in ${(elapsedMs / 1000).toFixed(
+      2
+    )}s (~${actualFps.toFixed(
       2
     )} fps). Frame intervals (ms) min/median/max: ${min}/${median}/${max}`
   );
 
-  return { actualFps, frames: frameBuffers.slice(0, FRAME_COUNT) };
+  return { actualFps, frames: bufferFrames ? frameBuffers : null };
 }
 
 function ensureHtmlPath(htmlPath) {
@@ -228,7 +309,8 @@ function ensureHtmlPath(htmlPath) {
 }
 
 async function main() {
-  const htmlPath = ensureHtmlPath(process.argv[2]);
+  const { htmlPath, mode } = parseArgs(process.argv.slice(2));
+  const resolvedHtmlPath = ensureHtmlPath(htmlPath);
 
   const baseTempDir = path.resolve(process.cwd(), 'tmp');
   fs.mkdirSync(baseTempDir, { recursive: true });
@@ -236,7 +318,7 @@ async function main() {
   fs.mkdirSync(runDir, { recursive: true });
 
   try {
-    const mp4File = await captureAndCreateMP4(htmlPath, runDir);
+    const mp4File = await captureAndCreateMP4(resolvedHtmlPath, runDir, mode);
     console.log(`Capture complete. Frames and video stored in: ${runDir}`);
     console.log(`MP4 file: ${mp4File}`);
   } catch (error) {
@@ -246,3 +328,24 @@ async function main() {
 }
 
 main();
+function frameMatchesViewport(buffer) {
+  if (SCREENSHOT_EXTENSION === 'png') {
+    if (buffer.length < 24) {
+      return false;
+    }
+    // PNG signature + IHDR chunk
+    const signature = buffer.readUInt32BE(0);
+    if (signature !== 0x89504e47) {
+      return false;
+    }
+    const chunkType = buffer.toString('ascii', 12, 16);
+    if (chunkType !== 'IHDR') {
+      return false;
+    }
+    const width = buffer.readUInt32BE(16);
+    const height = buffer.readUInt32BE(20);
+    return width === VIEWPORT.width && height === VIEWPORT.height;
+  }
+  // For JPEG we skip validation (not used currently).
+  return true;
+}
