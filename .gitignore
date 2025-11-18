@@ -12,7 +12,3 @@ out/
 !/broadcast
 /broadcast/*/31337/
 /broadcast/**/dry-run/
-
-# output from script/tf_getparcel.sh
-*.html
-script/*.html
