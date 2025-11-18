@@ -45,6 +45,7 @@ forge build
 - **script**
   - **perlin_noise_audit**: script & report with analysis of `PerlinNoise.sol` to verify that there's no hidden data in the noise
   - **tf_getparcel.sh**: handy script that can fetch a complete HTML for a parcel (current state or any variation)
+  - **video_capture/**: headless Chromium + ffmpeg pipeline to record Terraforms HTML into MP4 (see its README for full details)
 - **src**: smart contracts
   - **interfaces/**: contract interfaces
   - **lib/**: shared libraries (e.g., `Base64.sol`, `ToString.sol`, `Types.sol`)
@@ -71,6 +72,18 @@ tf_getparcel 1
 ```bash
 tf_getparcel
 ```
+
+### Use `scripts/video_capture` to record Terraforms HTML animations
+
+This Node/Puppeteer + ffmpeg script loads any standalone Terraforms HTML and writes frames plus `capture.mp4` under `tmp/capture_<timestamp>`.
+
+```bash
+cd scripts/video_capture
+npm install
+NODE_OPTIONS=--expose-gc npm run capture -- path/to/animation.html [--mode streaming|buffered]
+```
+
+Full options, pipeline notes, and customization tips live in `scripts/video_capture/README.md`.
 
 ### Contract addresses
 
