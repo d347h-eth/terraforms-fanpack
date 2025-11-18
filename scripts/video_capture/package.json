@@ -1,15 +1,15 @@
 {
-  "name": "video_capture",
+  "name": "terraforms-capture",
   "version": "1.0.0",
-  "description": "",
+  "description": "Capture Terraforms animations as MP4 videos",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "capture": "node scripts/capture.js"
+    "capture": "node capture.js"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "d347h.eth <wagdie.dev@gmail.com>",
+  "license": "AGPL-3.0-only",
   "type": "commonjs",
   "dependencies": {
     "puppeteer": "^24.30.0"

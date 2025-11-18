@@ -91,7 +91,7 @@ async function captureAndCreateMP4(htmlPath, runDir, mode) {
         toggle = !toggle;
       }, 20);
     });
-    console.log('Page loaded; starting capture…');
+    console.log('Page loaded; starting capture...');
     await delay(STARTUP_DELAY_MS);
 
     const { actualFps, frames } = await screencastCapture(page, runDir, mode);
