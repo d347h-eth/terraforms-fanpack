@@ -9,18 +9,16 @@ castcall() {
 # hex_to_dec - convert a 0x-prefixed or plain hex string to decimal using bc/dc; fall back to python3 if available
 hex_to_dec() {
     local hex=${1#0x}
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -c "print(int('$hex', 16))"
+        return
+    fi
     hex=${hex^^}
     if command -v bc >/dev/null 2>&1; then
-        printf 'ibase=16;%s\n' "$hex" | bc
+        printf 'ibase=16;%s\n' "$hex" | bc | tr -d '\\\n'
         return
     elif command -v dc >/dev/null 2>&1; then
-        printf '16i %s p\n' "$hex" | dc
-        return
-    elif command -v python3 >/dev/null 2>&1; then
-        python3 - <<'PY' "$hex"
-import sys
-print(int(sys.argv[1], 16))
-PY
+        printf '16i %s p\n' "$hex" | dc | tr -d '\\\n'
         return
     fi
     printf '0'
@@ -111,7 +109,12 @@ Usage: tf_getparcel TOKEN_ID [options]
     -e|--seed   N      seed   (default 10196)
     -d|--decay  N      decay  (default 0; doesn't affect V2 due to internal override in the contract)
     -s|--status N      override status; if omitted, live-fetch
-    -c|--canvas CSV    override canvas; CSV of 32-byte words (0x + 64 hex); if omitted, live-fetch 16 rows
+                       0: Terrain (default visual presentation)
+                       1: Daydream (blank token users can paint)
+                       2: Terraformed (token with user-supplied visuals)
+                       3: OriginDaydream (daydream token dreaming on mint)
+                       4: OriginTerraformed (terraformed OriginDaydream token)
+    -c|--canvas CSV    override canvas; CSV of 32-byte words (0x + 64 hex) or raw hex string (1024 chars); if omitted, live-fetch 16 rows
     -o|--output FILE   write HTML/SVG to file (default: TOKEN_ID.html; '-' for stdout)
     -n|--dry-run       resolve inputs and print them; no render call
     --show-canvas      with --dry-run, print full canvas rows
@@ -203,7 +206,7 @@ tf_getparcel() {
         # If status is 0, the contract resolves the internal canvas; avoid lookups and pass zeros
         if [[ $status =~ ^[0-9]+$ ]] && (( status == 0 )); then
             for (( i=0; i<16; i++ )); do
-                canvas_arr+=("0")
+                canvas_arr+=("0000000000000000000000000000000000000000000000000000000000000000")
                 if [[ $dry_run -eq 1 && $show_canvas -eq 1 ]]; then
                     echo "  [debug] canvas[$i] = 0"
                 fi
@@ -218,20 +221,72 @@ tf_getparcel() {
                     word_hex=""
                 fi
                 if [[ -z $word_hex ]]; then
-                    canvas_arr+=("0")
+                    canvas_arr+=("0000000000000000000000000000000000000000000000000000000000000000")
                     if [[ $dry_run -eq 1 && $show_canvas -eq 1 ]]; then
                         echo "  [debug] canvas[$i] = 0"
                     fi
                     continue
                 fi
-                canvas_arr+=("$word_hex")
+                canvas_arr+=("${word_hex#0x}")
                 if [[ $dry_run -eq 1 && $show_canvas -eq 1 ]]; then
                     echo "  [debug] canvas[$i] = $word_hex"
                 fi
             done
         fi
     else
-        IFS=',' read -r -a canvas_arr <<< "$canvas_str"
+        # If canvas_str contains no commas and is long, treat as raw decimal digit string
+        # Strip whitespace first (newlines, spaces)
+        local clean_canvas
+        clean_canvas=$(printf "%s" "$canvas_str" | tr -d '[:space:]')
+
+        if [[ "$clean_canvas" != *","* && ${#clean_canvas} -gt 64 ]]; then
+            # Split into 64-character chunks (digits) and convert to hex words
+            # The contract expects 16 uint256s. Each uint256 represents 64 decimal digits.
+            local remaining="$clean_canvas"
+            local chunk_count=0
+            
+            while [[ ${#remaining} -gt 0 && $chunk_count -lt 16 ]]; do
+                local chunk="${remaining:0:64}"
+                remaining="${remaining:64}"
+                chunk_count=$((chunk_count + 1))
+                
+                # Convert decimal string chunk to hex
+                local hex_val=""
+                if command -v python3 >/dev/null 2>&1; then
+                    hex_val=$(python3 -c "print(hex(int('$chunk'))[2:])")
+                elif command -v bc >/dev/null 2>&1; then
+                    hex_val=$(echo "obase=16; $chunk" | bc | tr -d '\\\n')
+                fi
+                
+                # Left-pad with zeros to 64 hex chars (32 bytes)
+                # Note: abi_decode expects 64 chars.
+                while [[ ${#hex_val} -lt 64 ]]; do
+                    hex_val="0${hex_val}"
+                done
+                
+                canvas_arr+=("$hex_val")
+            done
+            
+            # Pad with zeros if fewer than 16 chunks
+            while [[ ${#canvas_arr[@]} -lt 16 ]]; do
+                canvas_arr+=("0000000000000000000000000000000000000000000000000000000000000000")
+            done
+        else
+            IFS=',' read -r -a canvas_arr <<< "$canvas_str"
+            # Ensure elements are clean hex (strip 0x if present for consistency in array, though loop handles it)
+            local j
+            for j in "${!canvas_arr[@]}"; do
+                local val="${canvas_arr[$j]}"
+                val="${val#0x}"
+                # Pad to 64 chars if it looks like hex and is short? 
+                # Assuming user provides valid 32-byte words if using commas.
+                # But let's ensure padding for abi_decode safety
+                while [[ ${#val} -lt 64 ]]; do
+                    val="0${val}"
+                done
+                canvas_arr[$j]="$val"
+            done
+        fi
     fi
 
     # ---------- build canvas JSON ----------
@@ -240,13 +295,15 @@ tf_getparcel() {
     local i elem elem_dec
     for i in "${!canvas_arr[@]}"; do
         elem="${canvas_arr[$i]}"
+        # elem is now raw hex string (no 0x prefix)
         if (( canvas_dec == 1 )); then
-            # elem_dec=$(word_to_dec "$elem")
-            elem_dec=$(abi_decode "$elem" uint)
+            # Convert hex to decimal
+            # abi_decode expects 0x prefix or just hex? 
+            # Our abi_decode implementation: local hex=${1#0x} -> handles both.
+            elem_dec=$(abi_decode "0x$elem" uint)
             canvas_json+="$elem_dec"
         else
-            [[ ${elem:0:2} != "0x" ]] && elem="0x${elem}"
-            canvas_json+="\"$elem\""
+            canvas_json+="\"0x$elem\""
         fi
         [[ $i -lt $((${#canvas_arr[@]}-1)) ]] && canvas_json+="," 
     done
@@ -300,6 +357,7 @@ tf_getparcel() {
         echo "  seed, decay     : $seed, $decay"
         [[ -z $output ]] && output="${id}-${version_slug}-${status_slug}.html"
         echo "  output          : $output"
+        echo "  canvas_json     : ${canvas_json}"
         return
     fi
 
