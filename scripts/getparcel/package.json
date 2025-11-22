@@ -1,0 +1,24 @@
+{
+  "name": "terraforms-getparcel",
+  "version": "1.0.0",
+  "description": "TypeScript CLI to fetch Terraforms parcel HTML/SVG via viem",
+  "author": "d347h.eth <wagdie.dev@gmail.com>",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "getparcel": "tsx src/index.ts",
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "commander": "^11.1.0",
+    "viem": "^2.39.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}

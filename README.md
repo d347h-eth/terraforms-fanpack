@@ -42,9 +42,9 @@ forge build
   - **events.md**: all events Terraforms can emit (including V2)
   - **reference.md**: full public/private API reference
 - **lib**: dependencies from OpenZeppelin and Forge standard libraries required for Terraforms compilation
-- **script**
+- **scripts**
   - **perlin_noise_audit**: script & report with analysis of `PerlinNoise.sol` to verify that there's no hidden data in the noise
-  - **tf_getparcel.sh**: handy script that can fetch a complete HTML for a parcel (current state or any variation)
+  - **getparcel/**: TypeScript + viem CLI to fetch a parcel's HTML/SVG (current state or any variation)
   - **video_capture/**: headless Chromium + ffmpeg pipeline to record Terraforms HTML into MP4 (see its README for full details)
 - **src**: smart contracts
   - **interfaces/**: contract interfaces
@@ -52,31 +52,28 @@ forge build
   - Key contracts: `Terraforms.sol`, `TerraformsData.sol`, `TerraformsSVG.sol`
   - V2 rendering and the Beacon system: `TerraformsData_v2_0.sol`, `TerraformsBeacon_v2_0.sol` (source for `TerraformsSVG_v2_0.sol` remains private so far)
 
-### Use `scripts/tf_getparcel.sh` to fetch parcel's content
+### Use `scripts/getparcel` to fetch parcel content
 
 Requirements:
-- [Foundry](https://github.com/foundry-rs/foundry) (`forge`, `cast`)
-- `bc` or `dc` available (used for big-int decoding) - should be already available on all OS
+- Node 20+
+- `npm install` inside `scripts/getparcel`
 
-You can control which JSON-RPC node to call with [$ETH_RPC_URL](scripts/tf_getparcel.sh#L1) (already set to a public node by default).
+You can control which JSON-RPC node to call with `$ETH_RPC_URL` (defaults to a public mainnet endpoint).
 
-1. `source` the script:
+1. Install and fetch parcel #1 in the current state:
 ```bash
-source ./scripts/tf_getparcel.sh
+cd scripts/getparcel
+npm install
+npm run getparcel -- 1
 ```
-2. Basic usage (fetch parcel #1 in the current state):
+2. See full usage (any version/state/canvas):
 ```bash
-tf_getparcel 1
+npm run getparcel -- --help
 ```
-3. See full usage manual (can fetch any version, state, canvas):
+3. Example with custom canvas (1024 decimal digits), renderer index, and status:
 ```bash
-tf_getparcel
+npm run getparcel -- 5308 --status terraformed --version 2 --canvas "<1024 decimals>"
 ```
-4. Fetch with custom canvas (raw 1024-character string):
-```bash
-tf_getparcel 5308 --status 2 --version 2 --canvas "2222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222223333222222222222222222222222222222223332222222223333322222222222222222232222223322222222222222222222222222223322222222222222222222222222222322222222222222222222232333322222222223322222222222223323333322222222333332222222222233333233222223322333322222222222233332222222323333333322222222222333332222222323333323222222222222322222222222223333232222222222222332232222222222223222222222222222233222222223222322222222222222222222222222223332222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222232222233332222222222222222222222233333332222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222"
-```
-
 ### Use `scripts/video_capture` to record Terraforms HTML animations
 
 This Node/Puppeteer + ffmpeg script loads any standalone Terraforms HTML and writes frames plus `capture.mp4` under `tmp/capture_<timestamp>`.
