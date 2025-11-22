@@ -1,8 +1,6 @@
 # getparcel (TypeScript)
 
-Node/TypeScript port of `scripts/getparcel.sh` that uses viem for all chain
-interactions. The CLI keeps the same inputs/outputs and adds friendlier parsing
-for status names and canvas decimals.
+TypeScript + viem CLI to fetch Terraforms parcel HTML/SVG with clean status/canvas handling.
 
 ## Setup
 
@@ -22,7 +20,7 @@ npm run getparcel -- <tokenId> [options]
 npx tsx src/index.ts <tokenId> [options]
 ```
 
-Key options (mirrors the original script):
+Key options:
 - `-m, --method tokenHTML|tokenSVG` (default `tokenHTML`)
 - `-v, --version <idx>` optional renderer index (defaults to on-chain mapping)
 - `-e, --seed <n>` (default `10196`)
