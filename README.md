@@ -81,7 +81,7 @@ This Node/Puppeteer + ffmpeg script loads any standalone Terraforms HTML and wri
 ```bash
 cd scripts/video_capture
 npm install
-NODE_OPTIONS=--expose-gc npm run capture -- path/to/animation.html [--mode streaming|buffered]
+NODE_OPTIONS=--expose-gc npm run capture -- path/to/animation.html
 ```
 
 Full options, pipeline notes, and customization tips live in `scripts/video_capture/README.md`.
