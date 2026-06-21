@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Terraforms Terrain Flow Direction Demo</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #11120f;
+      --panel: #191b17;
+      --text: #f0ede2;
+      --muted: #a9a493;
+      --line: #34372e;
+      --accent: #e2c15f;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: radial-gradient(circle at 22% 8%, #2d3024 0, transparent 34rem), var(--bg);
+      color: var(--text);
+      font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+
+    main {
+      width: min(1120px, 100%);
+    }
+
+    h1 {
+      font-size: 18px;
+      line-height: 1.2;
+      margin: 0 0 8px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+      max-width: 96ch;
+    }
+
+    #sketch {
+      width: 100%;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .note {
+      margin-top: 12px;
+      font-size: 12px;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
+</head>
+<body>
+  <main>
+    <h1>Terrain resource-flow phase: floor(time + height + 0.5 * col + 0.1 * DIRECTION * row) % 9</h1>
+    <p>
+      Solidity changes DIRECTION once per day over a 10-day palindromic cycle:
+      5, 4, 3, 2, 1, 0, 1, 2, 3, 4. The browser loop moves the phase continuously;
+      DIRECTION only changes the row gradient, so the apparent angle opens and closes instead of rotating around a center.
+      This demo fixes height to zero to isolate that directional term.
+    </p>
+    <div id="sketch"></div>
+    <p class="note">
+      Left to right: minimum row-gradient, middle row-gradient, maximum row-gradient, then the animated daily cycle.
+      The animated panel uses the same field shape and accelerates time so the 10-day cadence can be inspected.
+    </p>
+  </main>
+
+  <script>
+    const grid = 32;
+    const directions = [0, 3, 5];
+    const dayDirections = [5, 4, 3, 2, 1, 0, 1, 2, 3, 4];
+    const palette = [
+      [241, 237, 218],
+      [222, 194, 103],
+      [199, 141, 80],
+      [161, 107, 91],
+      [113, 125, 101],
+      [73, 118, 128],
+      [69, 83, 116],
+      [104, 83, 112],
+      [44, 47, 39],
+    ];
+
+    let sketch;
+
+    function directionForCycle(dayFloat) {
+      const day = Math.floor(dayFloat) % dayDirections.length;
+      return dayDirections[day];
+    }
+
+    function drawField(p, x, y, size, direction, phase, label, animateArrow) {
+      const cell = size / grid;
+      p.noStroke();
+      for (let c = 0; c < grid; c++) {
+        for (let r = 0; r < grid; r++) {
+          const h = 0;
+          const idx = Math.floor(phase + h + 0.5 * c + 0.1 * direction * r) % 9;
+          const col = palette[(idx + 9) % 9];
+          p.fill(col[0], col[1], col[2]);
+          p.rect(x + c * cell, y + r * cell, cell + 0.35, cell + 0.35);
+        }
+      }
+
+      p.noFill();
+      p.stroke(64, 69, 56);
+      p.strokeWeight(1);
+      p.rect(x, y, size, size);
+
+      const vx = 0.5;
+      const vy = 0.1 * direction;
+      const mag = Math.sqrt(vx * vx + vy * vy) || 1;
+      const nx = vx / mag;
+      const ny = vy / mag;
+      const cx = x + size * 0.5;
+      const cy = y + size * 0.5;
+      const len = size * 0.34;
+
+      p.stroke(255, 235, 157);
+      p.strokeWeight(2);
+      p.line(cx - nx * len, cy - ny * len, cx + nx * len, cy + ny * len);
+      if (animateArrow) {
+        p.fill(255, 235, 157);
+        p.noStroke();
+        p.circle(cx + nx * len, cy + ny * len, 6);
+      }
+
+      p.noStroke();
+      p.fill(240, 237, 226);
+      p.textSize(12);
+      p.textAlign(p.LEFT, p.TOP);
+      p.text(label, x, y + size + 10);
+      p.fill(169, 164, 147);
+      p.text("row coefficient = " + (0.1 * direction).toFixed(1), x, y + size + 27);
+    }
+
+    function drawSignal(p, x, y, w, h, dayFloat) {
+      p.noFill();
+      p.stroke(69, 73, 60);
+      p.rect(x, y, w, h);
+
+      p.stroke(226, 193, 95);
+      p.strokeWeight(2);
+      p.noFill();
+      p.beginShape();
+      for (let i = 0; i <= 10; i++) {
+        const d = dayDirections[i % dayDirections.length];
+        const px = x + (i / 10) * w;
+        const py = y + h - (d / 5) * h;
+        p.vertex(px, py);
+      }
+      p.endShape();
+
+      const playX = x + ((dayFloat % 10) / 10) * w;
+      p.stroke(240, 237, 226);
+      p.line(playX, y - 4, playX, y + h + 4);
+
+      p.noStroke();
+      p.fill(169, 164, 147);
+      p.textSize(11);
+      p.textAlign(p.LEFT, p.TOP);
+      p.text("10-day Solidity DIRECTION signal", x, y + h + 8);
+      p.textAlign(p.RIGHT, p.TOP);
+      p.text("day " + Math.floor(dayFloat % 10) + " -> D=" + directionForCycle(dayFloat), x + w, y + h + 8);
+    }
+
+    sketch = new p5((p) => {
+      p.setup = () => {
+        const holder = document.getElementById("sketch");
+        const canvas = p.createCanvas(holder.clientWidth, 500);
+        canvas.parent(holder);
+        p.textFont("ui-monospace, SFMono-Regular, Menlo, Consolas, monospace");
+      };
+
+      p.windowResized = () => {
+        const holder = document.getElementById("sketch");
+        p.resizeCanvas(holder.clientWidth, 500);
+      };
+
+      p.draw = () => {
+        p.background(25, 27, 23);
+        const pad = 24;
+        const gap = 18;
+        const panel = Math.min((p.width - pad * 2 - gap * 3) / 4, 220);
+        const top = 34;
+        const phase = (p.millis() * 0.0125) % 9;
+        const dayFloat = (p.millis() / 900) % 10;
+        const animatedD = directionForCycle(dayFloat);
+
+        for (let i = 0; i < directions.length; i++) {
+          drawField(
+            p,
+            pad + i * (panel + gap),
+            top,
+            panel,
+            directions[i],
+            phase,
+            "DIRECTION = " + directions[i],
+            false
+          );
+        }
+
+        drawField(
+          p,
+          pad + 3 * (panel + gap),
+          top,
+          panel,
+          animatedD,
+          phase,
+          "animated daily cycle",
+          true
+        );
+
+        drawSignal(p, pad, top + panel + 72, p.width - pad * 2, 96, dayFloat);
+      };
+    });
+  </script>
+</body>
+</html>

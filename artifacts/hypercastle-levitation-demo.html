@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The Hypercastle Levitation Demo</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #10120f;
+      --panel: #171a15;
+      --text: #f2eedf;
+      --muted: #aaa38d;
+      --line: #34392f;
+      --accent: #e0c061;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background:
+        linear-gradient(180deg, rgba(224, 192, 97, 0.08), transparent 38%),
+        radial-gradient(circle at 78% 12%, #263326 0, transparent 28rem),
+        var(--bg);
+      color: var(--text);
+      font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+      box-sizing: border-box;
+      padding: 28px;
+    }
+
+    main {
+      width: min(1760px, 100%);
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: 24px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0 0 22px;
+      max-width: 118ch;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.55;
+    }
+
+    #sketch {
+      width: 100%;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .note {
+      margin-top: 14px;
+      font-size: 14px;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
+</head>
+<body>
+  <main>
+    <h1>The Hypercastle vertical levitation: 3650-day triangular z-oscillation</h1>
+    <p>
+      The onchain formula moves levels through a 10-year cycle. The whole structure reaches an upper peak near year 2.5,
+      returns to baseline near year 5, reaches a lower trough near year 7.5, then returns to baseline at year 10.
+      Upper levels are intensified during the upward half; lower levels are intensified during the downward half.
+    </p>
+    <div id="sketch"></div>
+    <p class="note">
+      This visualizes only the zOscillation term. The vertical plate view uses the real per-level dimensions from
+      terraforms-structure.ts, with the oscillation magnified so it can be seen against the much larger level spacing.
+      Browser JS does not continuously recompute the terrain heightmap.
+    </p>
+  </main>
+
+  <script>
+    const levels = 20;
+    const center = 9;
+    const daysInCycle = 3650;
+    const increment = 6;
+    const step = 6619;
+    const tokenDims = 32;
+    const levelGapInTokens = 7;
+    const maxLevelDimension = 48;
+    const levelDimensions = [
+      4, 8, 8, 16, 16, 24, 24, 24, 16, 32, 32, 16, 48, 48, 24, 24, 16, 8, 8, 4,
+    ];
+    const phaseLabels = [
+      { year: 0, label: "baseline" },
+      { year: 2.5, label: "upper peak" },
+      { year: 5, label: "baseline" },
+      { year: 7.5, label: "lower trough" },
+      { year: 10, label: "repeat" },
+    ];
+
+    function canvasHeight() {
+      return Math.max(700, Math.min(980, window.innerHeight - 210));
+    }
+
+    function zOsc(level, day, decay = 0) {
+      let location = Math.floor(day) % daysInCycle;
+      let inc = increment;
+      let levelIntensifier = 0;
+
+      if (location < daysInCycle / 2) {
+        if (level > center) levelIntensifier = level - center;
+      } else {
+        inc *= -1;
+        location -= daysInCycle / 2;
+        if (level < center) levelIntensifier = center - level;
+      }
+
+      let result = Math.floor(daysInCycle / 4) - location;
+      if (result < 0) result *= -1;
+      result = (Math.floor(daysInCycle / 4) - result) * inc;
+      result += Math.trunc((result * levelIntensifier) / 20);
+      return Math.trunc(result / (decay + 1));
+    }
+
+    function drawVerticalStructure(p, x, y, w, h, day) {
+      const maxAmp = zOsc(19, Math.floor(daysInCycle / 4));
+      const baseGap = levelGapInTokens * tokenDims * step;
+      const trueScaleMotion = maxAmp / baseGap;
+      const motionScale = 13;
+      const levelStep = h / (levels - 1);
+
+      p.noStroke();
+      p.fill(242, 238, 223);
+      p.textSize(18);
+      p.textAlign(p.LEFT, p.TOP);
+      p.text("vertical section using real level widths", x, y - 34);
+
+      p.stroke(52, 57, 47);
+      p.strokeWeight(2);
+      p.line(x + w * 0.5, y - 10, x + w * 0.5, y + h + 10);
+
+      for (let level = 0; level < levels; level++) {
+        const yBase = y + h - level * levelStep;
+        const z = zOsc(level, day);
+        const yOffset = p.map(z, -maxAmp, maxAmp, motionScale, -motionScale);
+        const intensity = Math.min(Math.abs(z) / maxAmp, 1);
+        const plateW = p.map(levelDimensions[level], 0, maxLevelDimension, 0, w * 0.86);
+        const plateH = p.map(levelDimensions[level], 0, maxLevelDimension, 6, 22);
+        const yy = yBase + yOffset;
+
+        p.noStroke();
+        p.fill(36, 40, 33);
+        p.rect(x + w * 0.5 - plateW * 0.5, yBase - plateH * 0.5, plateW, plateH, 1);
+
+        p.fill(
+          p.lerp(77, 224, intensity),
+          p.lerp(123, 192, intensity),
+          p.lerp(127, 97, intensity),
+        );
+        p.rect(x + w * 0.5 - plateW * 0.5, yy - plateH * 0.5, plateW, plateH, 1);
+
+        if (level === 0 || level === 9 || level === 19) {
+          p.noStroke();
+          p.fill(170, 163, 141);
+          p.textSize(14);
+          p.textAlign(p.LEFT, p.CENTER);
+          p.text("L" + (level + 1), x, yy);
+          p.textAlign(p.RIGHT, p.CENTER);
+          p.text(levelDimensions[level] + "x" + levelDimensions[level], x + w, yy);
+        }
+      }
+
+      p.noStroke();
+      p.fill(170, 163, 141);
+      p.textSize(15);
+      p.textAlign(p.LEFT, p.BOTTOM);
+      p.text("vertical oscillation is magnified for visibility", x, y + h + 40);
+      p.text("true max oscillation / level gap ~= " + trueScaleMotion.toFixed(4), x, y + h + 60);
+    }
+
+    function drawCurve(p, x, y, w, h, day) {
+      p.noFill();
+      p.stroke(52, 57, 47);
+      p.rect(x, y, w, h);
+      p.line(x, y + h * 0.5, x + w, y + h * 0.5);
+
+      for (const mark of phaseLabels) {
+        const mx = x + (mark.year / 10) * w;
+        p.stroke(52, 57, 47);
+        p.line(mx, y, mx, y + h);
+        p.noStroke();
+        p.fill(170, 163, 141);
+        p.textSize(14);
+        p.textAlign(p.CENTER, p.TOP);
+        p.text(mark.label, mx, y + h + 8);
+        p.text(mark.year + "y", mx, y + h + 22);
+      }
+
+      const maxAmp = zOsc(19, Math.floor(daysInCycle / 4));
+      const series = [
+        { level: 19, color: [224, 192, 97], label: "level 19" },
+        { level: 9, color: [242, 238, 223], label: "level 9" },
+        { level: 0, color: [77, 123, 127], label: "level 0" },
+      ];
+
+      for (const s of series) {
+        p.noFill();
+        p.stroke(s.color[0], s.color[1], s.color[2]);
+        p.strokeWeight(2);
+        p.beginShape();
+        for (let i = 0; i <= 360; i++) {
+          const d = (i / 360) * daysInCycle;
+          const z = zOsc(s.level, d);
+          const px = x + (i / 360) * w;
+          const py = y + h * 0.5 - p.map(z, -maxAmp, maxAmp, -h * 0.44, h * 0.44);
+          p.vertex(px, py);
+        }
+        p.endShape();
+      }
+
+      const playX = x + ((day % daysInCycle) / daysInCycle) * w;
+      p.stroke(242, 238, 223);
+      p.strokeWeight(1.5);
+      p.line(playX, y - 6, playX, y + h + 6);
+
+      p.noStroke();
+      p.textSize(15);
+      p.textAlign(p.LEFT, p.TOP);
+      let lx = x;
+      for (const s of series) {
+        p.fill(s.color[0], s.color[1], s.color[2]);
+        p.rect(lx, y - 36, 18, 12);
+        p.fill(170, 163, 141);
+        p.text(s.label, lx + 26, y - 39);
+        lx += 124;
+      }
+    }
+
+    function drawPhaseReadout(p, x, y, w, day) {
+      const year = (day / 365).toFixed(2);
+      const loc = Math.floor(day) % daysInCycle;
+      const zTop = zOsc(19, day);
+      const zMid = zOsc(9, day);
+      const zBottom = zOsc(0, day);
+
+      p.noStroke();
+      p.fill(242, 238, 223);
+      p.textSize(20);
+      p.textAlign(p.LEFT, p.TOP);
+      p.text("cycle year " + year + " / 10", x, y);
+
+      p.fill(170, 163, 141);
+      p.textSize(16);
+      p.text("day " + loc + " of 3650", x, y + 34);
+      p.text("z offsets: level 19 = " + zTop + ", level 9 = " + zMid + ", level 0 = " + zBottom, x, y + 62);
+
+      const phase = loc < daysInCycle / 2 ? "upward half" : "downward half";
+      p.fill(224, 192, 97);
+      p.textAlign(p.RIGHT, p.TOP);
+      p.text(phase, x + w, y);
+    }
+
+    new p5((p) => {
+      p.setup = () => {
+        const holder = document.getElementById("sketch");
+        const canvas = p.createCanvas(holder.clientWidth, canvasHeight());
+        canvas.parent(holder);
+        p.textFont("ui-monospace, SFMono-Regular, Menlo, Consolas, monospace");
+      };
+
+      p.windowResized = () => {
+        const holder = document.getElementById("sketch");
+        p.resizeCanvas(holder.clientWidth, canvasHeight());
+      };
+
+      p.draw = () => {
+        p.background(23, 26, 21);
+        const pad = Math.max(34, p.width * 0.028);
+        const day = (p.millis() / 14000) * daysInCycle;
+        const leftW = Math.min(560, p.width * 0.38);
+        const curveX = pad + leftW + Math.max(60, p.width * 0.045);
+        const curveW = p.width - curveX - pad;
+        const top = 96;
+        const structureH = p.height - 250;
+        const curveH = Math.min(390, p.height * 0.43);
+
+        drawVerticalStructure(p, pad, top, leftW, structureH, day);
+        drawCurve(p, curveX, top + 30, curveW, curveH, day);
+        drawPhaseReadout(p, curveX, top + curveH + 110, curveW, day);
+      };
+    });
+  </script>
+</body>
+</html>
